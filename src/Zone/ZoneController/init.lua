@@ -67,7 +67,8 @@ local heartbeatActions = {
 		end
 		local touchingZones = ZoneController.getTouchingZones(character, true, recommendedDetection, trackers.player)
 		for _, zone in pairs(touchingZones) do
-			if zone.activeTriggers["localPlayer"] then
+			-- Safety check: ensure zone still has activeTriggers
+			if zone.activeTriggers and zone.activeTriggers["localPlayer"] then
 				fillOccupants(zonesAndOccupants, zone, localPlayer)
 			end
 		end
@@ -100,6 +101,10 @@ function ZoneController._deregisterZone(zone)
 end
 
 function ZoneController._registerConnection(registeredZone, registeredTriggerType)
+	-- Safety check: ensure zone still has activeTriggers property
+	if not registeredZone.activeTriggers then
+		return
+	end
 	local originalItems = dictLength(registeredZone.activeTriggers)
 	activeConnections += 1
 	if originalItems == 0 then
@@ -109,7 +114,7 @@ function ZoneController._registerConnection(registeredZone, registeredTriggerTyp
 	local currentTriggerCount = activeTriggers[registeredTriggerType]
 	activeTriggers[registeredTriggerType] = (currentTriggerCount and currentTriggerCount + 1) or 1
 	registeredZone.activeTriggers[registeredTriggerType] = true
-	if registeredZone.touchedConnectionActions[registeredTriggerType] then
+	if registeredZone.touchedConnectionActions and registeredZone.touchedConnectionActions[registeredTriggerType] then
 		registeredZone:_formTouchedConnection(registeredTriggerType)
 	end
 	if heartbeatActions[registeredTriggerType] then
@@ -156,15 +161,18 @@ function ZoneController._formHeartbeat(registeredTriggerType)
 			local lowestAccuracy
 			local lowestDetection
 			for zone, _ in pairs(activeZones) do
-				if zone.activeTriggers[registeredTriggerType] then
+				if zone.activeTriggers and zone.activeTriggers[registeredTriggerType] then
 					local zAccuracy = zone.accuracy
-					if lowestAccuracy == nil or zAccuracy < lowestAccuracy then
+					if zAccuracy and (lowestAccuracy == nil or zAccuracy < lowestAccuracy) then
 						lowestAccuracy = zAccuracy
 					end
-					ZoneController.updateDetection(zone)
-					local zDetection = zone._currentEnterDetection
-					if lowestDetection == nil or zDetection < lowestDetection then
-						lowestDetection = zDetection
+					-- Safety check: ensure zone still has detection properties
+					if zone.enterDetection and zone.exitDetection then
+						ZoneController.updateDetection(zone)
+						local zDetection = zone._currentEnterDetection
+						if zDetection and (lowestDetection == nil or zDetection < lowestDetection) then
+							lowestDetection = zDetection
+						end
 					end
 				end
 			end
@@ -177,31 +185,37 @@ function ZoneController._formHeartbeat(registeredTriggerType)
 			local occupantsToBlock = {}
 			local zonesToPotentiallyIgnore = {}
 			for zone, newOccupants in pairs(zonesAndOccupants) do
-				local settingsGroup = (zone.settingsGroupName and ZoneController.getGroup(zone.settingsGroupName))
-				if settingsGroup and settingsGroup.onlyEnterOnceExitedAll == true then
-					--local currentOccupants = zone.occupants[registeredTriggerType]
-					--if currentOccupants then
-					for newOccupant, _ in pairs(newOccupants) do
-						--if currentOccupants[newOccupant] then
-						local groupDetail = occupantsToBlock[zone.settingsGroupName]
-						if not groupDetail then
-							groupDetail = {}
-							occupantsToBlock[zone.settingsGroupName] = groupDetail
+				-- Safety check: ensure zone still has settingsGroupName property
+				if zone.settingsGroupName then
+					local settingsGroup = ZoneController.getGroup(zone.settingsGroupName)
+					if settingsGroup and settingsGroup.onlyEnterOnceExitedAll == true then
+						--local currentOccupants = zone.occupants[registeredTriggerType]
+						--if currentOccupants then
+						for newOccupant, _ in pairs(newOccupants) do
+							--if currentOccupants[newOccupant] then
+							local groupDetail = occupantsToBlock[zone.settingsGroupName]
+							if not groupDetail then
+								groupDetail = {}
+								occupantsToBlock[zone.settingsGroupName] = groupDetail
+							end
+							groupDetail[newOccupant] = zone
+							--end
 						end
-						groupDetail[newOccupant] = zone
+						zonesToPotentiallyIgnore[zone] = newOccupants
 						--end
 					end
-					zonesToPotentiallyIgnore[zone] = newOccupants
-					--end
 				end
 			end
 			for zone, newOccupants in pairs(zonesToPotentiallyIgnore) do
-				local groupDetail = occupantsToBlock[zone.settingsGroupName]
-				if groupDetail then
-					for newOccupant, _ in pairs(newOccupants) do
-						local occupantToKeepZone = groupDetail[newOccupant]
-						if occupantToKeepZone and occupantToKeepZone ~= zone then
-							newOccupants[newOccupant] = nil
+				-- Safety check: ensure zone still has settingsGroupName property
+				if zone.settingsGroupName then
+					local groupDetail = occupantsToBlock[zone.settingsGroupName]
+					if groupDetail then
+						for newOccupant, _ in pairs(newOccupants) do
+							local occupantToKeepZone = groupDetail[newOccupant]
+							if occupantToKeepZone and occupantToKeepZone ~= zone then
+								newOccupants[newOccupant] = nil
+							end
 						end
 					end
 				end
@@ -210,7 +224,7 @@ function ZoneController._formHeartbeat(registeredTriggerType)
 			-- This deduces what signals should be fired
 			local collectiveSignalsToFire = { {}, {} }
 			for zone, _ in pairs(activeZones) do
-				if zone.activeTriggers[registeredTriggerType] then
+				if zone.activeTriggers and zone.activeTriggers[registeredTriggerType] then
 					local zAccuracy = zone.accuracy
 					local occupantsDict = zonesAndOccupants[zone] or {}
 					local occupantsPresent = false
@@ -218,12 +232,15 @@ function ZoneController._formHeartbeat(registeredTriggerType)
 						occupantsPresent = true
 						break
 					end
-					if occupantsPresent and zAccuracy > highestAccuracy then
+					if occupantsPresent and zAccuracy and zAccuracy > highestAccuracy then
 						highestAccuracy = zAccuracy
 					end
-					local signalsToFire = zone:_updateOccupants(registeredTriggerType, occupantsDict)
-					collectiveSignalsToFire[1][zone] = signalsToFire.exited
-					collectiveSignalsToFire[2][zone] = signalsToFire.entered
+					-- Safety check: ensure zone still has necessary methods
+					if zone._updateOccupants then
+						local signalsToFire = zone:_updateOccupants(registeredTriggerType, occupantsDict)
+						collectiveSignalsToFire[1][zone] = signalsToFire.exited
+						collectiveSignalsToFire[2][zone] = signalsToFire.entered
+					end
 				end
 			end
 
@@ -261,12 +278,18 @@ function ZoneController._deregisterConnection(registeredZone, registeredTriggerT
 	else
 		activeTriggers[registeredTriggerType] -= 1
 	end
-	registeredZone.activeTriggers[registeredTriggerType] = nil
-	if dictLength(registeredZone.activeTriggers) == 0 then
+	-- Safety check: ensure zone still has activeTriggers property
+	if registeredZone.activeTriggers then
+		registeredZone.activeTriggers[registeredTriggerType] = nil
+		if dictLength(registeredZone.activeTriggers) == 0 then
+			activeZones[registeredZone] = nil
+			ZoneController._updateZoneDetails()
+		end
+	else
+		-- If activeTriggers is already nil, ensure zone is removed from activeZones
 		activeZones[registeredZone] = nil
-		ZoneController._updateZoneDetails()
 	end
-	if registeredZone.touchedConnectionActions[registeredTriggerType] then
+	if registeredZone.touchedConnectionActions and registeredZone.touchedConnectionActions[registeredTriggerType] then
 		registeredZone:_disconnectTouchedConnection(registeredTriggerType)
 	end
 end
@@ -278,17 +301,20 @@ function ZoneController._updateZoneDetails()
 	allPartToZone = {}
 	activeZonesTotalVolume = 0
 	for zone, _ in pairs(registeredZones) do
-		local isActive = activeZones[zone]
-		if isActive then
-			activeZonesTotalVolume += zone.volume
-		end
-		for _, zonePart in pairs(zone.zoneParts) do
+		-- Safety check: ensure zone still has required properties
+		if zone.volume and zone.zoneParts then
+			local isActive = activeZones[zone]
 			if isActive then
-				table.insert(activeParts, zonePart)
-				activePartToZone[zonePart] = zone
+				activeZonesTotalVolume += zone.volume
 			end
-			table.insert(allParts, zonePart)
-			allPartToZone[zonePart] = zone
+			for _, zonePart in pairs(zone.zoneParts) do
+				if isActive then
+					table.insert(activeParts, zonePart)
+					activePartToZone[zonePart] = zone
+				end
+				table.insert(allParts, zonePart)
+				allPartToZone[zonePart] = zone
+			end
 		end
 	end
 end
@@ -300,10 +326,13 @@ function ZoneController._getZonesAndItems(
 	onlyActiveZones,
 	recommendedDetection
 )
-	local totalZoneVolume = zoneCustomVolume
-	if not totalZoneVolume then
+	local totalZoneVolume = zoneCustomVolume or 0
+	if not zoneCustomVolume then
 		for zone, _ in pairs(zonesDictToCheck) do
-			totalZoneVolume += zone.volume
+			-- Safety check: ensure zone still has volume property
+			if zone.volume then
+				totalZoneVolume += zone.volume
+			end
 		end
 	end
 	local zonesAndOccupants = {}
@@ -316,7 +345,8 @@ function ZoneController._getZonesAndItems(
 		for _, item in pairs(tracker.items) do
 			local touchingZones = ZoneController.getTouchingZones(item, onlyActiveZones, recommendedDetection, tracker)
 			for _, zone in pairs(touchingZones) do
-				if not onlyActiveZones or zone.activeTriggers[trackerName] then
+				-- Safety check: ensure zone still has activeTriggers
+				if zone.activeTriggers and (not onlyActiveZones or zone.activeTriggers[trackerName]) then
 					local finalItem = item
 					if trackerName == "player" then
 						finalItem = players:GetPlayerFromCharacter(item)
@@ -333,6 +363,10 @@ function ZoneController._getZonesAndItems(
 		-- checks directly within each zone to determine players inside
 		for zone, _ in pairs(zonesDictToCheck) do
 			if not onlyActiveZones or zone.activeTriggers[trackerName] then
+				-- Safety check: ensure zone properties still exist (zone might be destroying)
+				if not zone.regionCFrame or not zone.regionSize or not zone.activeTriggers then
+					continue
+				end
 				local result =
 					CollectiveWorldModel:GetPartBoundsInBox(zone.regionCFrame, zone.regionSize, tracker.whitelistParams)
 				local finalItemsDict = {}
@@ -343,12 +377,13 @@ function ZoneController._getZonesAndItems(
 					end
 				end
 				for item, _ in pairs(finalItemsDict) do
-					if trackerName == "player" then
+					-- Safety check: ensure zone methods still exist (zone might be destroying)
+					if trackerName == "player" and zone.findPlayer then
 						local player = players:GetPlayerFromCharacter(item)
-						if zone:findPlayer(player) then
+						if player and zone:findPlayer(player) then
 							fillOccupants(zonesAndOccupants, zone, player)
 						end
-					elseif zone:findItem(item) then
+					elseif zone.findItem and zone:findItem(item) then
 						fillOccupants(zonesAndOccupants, zone, item)
 					end
 				end
@@ -485,7 +520,10 @@ function ZoneController.getTouchingZones(item, onlyActiveZones, recommendedDetec
 	local touchingZonesArray = {}
 	local newExitDetection
 	for zone, _ in pairs(zonesDict) do
-		if newExitDetection == nil or zone._currentExitDetection < newExitDetection then
+		-- Safety check: ensure zone still has _currentExitDetection property
+		if
+			zone._currentExitDetection and (newExitDetection == nil or zone._currentExitDetection < newExitDetection)
+		then
 			newExitDetection = zone._currentExitDetection
 		end
 		table.insert(touchingZonesArray, zone)
