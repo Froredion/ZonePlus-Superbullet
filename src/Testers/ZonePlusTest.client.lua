@@ -19,6 +19,7 @@ local sphereZoneContainer = testFolder:WaitForChild("SphereZone")
 local complexZoneContainer = testFolder:WaitForChild("ComplexZone")
 local cylinderGroupedContainer = testFolder:WaitForChild("CylinderGroupedZone")
 local cylinderUngroupedContainer = testFolder:WaitForChild("CylinderUngroupedZone")
+local destroyTestContainer = testFolder:WaitForChild("DestroyTestZone")
 
 print("🚀 ZonePlus v4.0.0 - Modern Spatial Query Edition Test")
 print("=" .. string.rep("=", 60))
@@ -120,6 +121,75 @@ for _, part in children do
 end
 
 print("📊 Total ungrouped zones created: " .. #ungroupedZones)
+
+-- Test 7: Destroy & Recreate Zone Test
+print("\n💥 Setting up Destroy & Recreate Zone Test...")
+local destroyZonePart = destroyTestContainer:WaitForChild("DestroyableZonePart")
+local destroyButton = destroyTestContainer:WaitForChild("DestroyButton")
+
+-- Create initial zone
+local destroyTestZone = Zone.new(destroyZonePart)
+destroyTestZone:setAccuracy("Medium")
+destroyTestZone:setDetection("Centre")
+print("✅ Destroyable Zone created initially")
+
+-- Track destroy count
+local destroyCount = 0
+local isDestroying = false
+
+-- Handle button touch to destroy and recreate zone
+local function onButtonTouched(otherPart)
+	if isDestroying then
+		return
+	end
+
+	local humanoid = otherPart.Parent:FindFirstChild("Humanoid")
+	if humanoid then
+		isDestroying = true
+		destroyCount = destroyCount + 1
+
+		print("\n💥 [Destroy Test #" .. destroyCount .. "] Destroying zone...")
+		print("   Zone ID before destroy: " .. tostring(destroyTestZone.zoneId))
+
+		-- Destroy the zone
+		destroyTestZone:destroy()
+		print("   ✅ Zone destroyed (table.clear + setmetatable called)")
+
+		-- Wait a moment
+		task.wait(0.5)
+
+		-- Recreate the zone
+		print("   🔄 Recreating zone...")
+		destroyTestZone = Zone.new(destroyZonePart)
+		destroyTestZone:setAccuracy("Medium")
+		destroyTestZone:setDetection("Centre")
+		print("   ✅ Zone recreated with new ID: " .. tostring(destroyTestZone.zoneId))
+
+		-- Reconnect enter/exit events
+		destroyTestZone.localPlayerEntered:Connect(function()
+			print("\n🟢 ENTERED: Destroy Test Zone (Cycle #" .. destroyCount .. ")")
+			destroyZonePart.Color = Color3.fromRGB(50, 255, 50)
+		end)
+
+		destroyTestZone.localPlayerExited:Connect(function()
+			print("\n🔴 EXITED: Destroy Test Zone (Cycle #" .. destroyCount .. ")")
+			destroyZonePart.Color = Color3.fromRGB(255, 200, 50)
+		end)
+
+		-- Flash the button to indicate success
+		for i = 1, 3 do
+			destroyButton.Color = Color3.fromRGB(50, 255, 50)
+			task.wait(0.1)
+			destroyButton.Color = Color3.fromRGB(255, 50, 50)
+			task.wait(0.1)
+		end
+
+		isDestroying = false
+	end
+end
+
+destroyButton.Touched:Connect(onButtonTouched)
+print("✅ Destroy & Recreate test initialized - Touch the red button to test!")
 
 -- Track zone status
 local zoneStatus = {
@@ -250,6 +320,7 @@ print("• Sphere Zone: Auto-detected Ball shape")
 print("• Complex Zone: Using GetPartsInPart for precision")
 print("• Cylinder Grouped Zone: Full cylinder with top/bottom")
 print("• Cylinder Ungrouped Zones: " .. #ungroupedZones .. " separate zones with unique colors")
+print("• Destroy Test Zone: Touch red button to destroy & recreate zone")
 print("\n💡 Walk into zones to test detection!")
 print("💡 Your character will highlight in zone colors:")
 print("   🔵 Blue = Box Zone")
@@ -257,6 +328,10 @@ print("   💗 Pink = Sphere Zone")
 print("   💚 Green = Complex Zone")
 print("   🟠 Orange = Cylinder Grouped Zone")
 print("   🌈 Various Colors = Ungrouped Zones (Purple, Magenta, Cyan, Orange-Yellow, Lime)")
+print("\n💥 Touch the RED BUTTON to test zone destroy/recreate!")
+print("   • Zone will be destroyed (table.clear + setmetatable)")
+print("   • New zone will be created with fresh ID")
+print("   • Events will be reconnected")
 print("💡 Watch the Output for enter/exit events")
 
 -- Performance monitoring and zone status debugging
